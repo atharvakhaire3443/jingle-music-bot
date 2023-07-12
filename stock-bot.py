@@ -178,8 +178,8 @@ async def baja(ctx):
             # Start playing the queue if it was empty
             if len(queue) == 1:
                 await play_queue(voice_client, channel)
-        else:
-            await channel.send('Added to queue: ' + subject)
+        # else:
+        #     await channel.send('Added to queue: ' + subject)
 
         await update_queue_message(channel)  # Update the queue display
     else:
@@ -220,17 +220,30 @@ async def play_queue(voice_client, channel):
 @bot.command()
 async def kyabajaray(ctx):
     channel = bot.get_channel(CHANNEL)
-    await update_queue_message(channel) # Update the queue display
-    await ctx.message.delete()
+    await update_queue_message(channel)
+
+queue_message_id = None  # Store the ID of the queue display message
 
 async def update_queue_message(channel):
+    global queue_message_id
+
+    # Delete the previous queue display message if it exists
+    if queue_message_id:
+        try:
+            previous_message = await channel.fetch_message(queue_message_id)
+            await previous_message.delete()
+        except discord.NotFound:
+            pass
+
     if queue:
-        queue_message = "------------------------------------------------\nCurrent Queue:\n"
+        queue_message = "Current Queue:\n"
         for i, (filename, duration) in enumerate(queue, start=1):
             queue_message += f"{i}. {filename} - Duration: {duration}\n"
     else:
         queue_message = "Queue is empty."
 
-    await channel.send(queue_message)
+    # Send the updated queue message and store its ID
+    queue_display_message = await channel.send(queue_message)
+    queue_message_id = queue_display_message.id
 
 bot.run(TOKEN)
