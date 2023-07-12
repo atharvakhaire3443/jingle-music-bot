@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -9,6 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from discord import FFmpegPCMAudio
 from discord import opus
+import time
 
 
 # if not discord.opus.is_loaded():
@@ -19,6 +21,9 @@ opus_encoder = discord.opus.Encoder()
 intents = discord.Intents.default()
 intents.guilds = True
 intents.message_content = True
+
+queue = []
+is_playing = False
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -34,14 +39,16 @@ def getVideoLink(query):
         youtube = build('youtube','v3',developerKey=GOOGLE_KEY)
         search_response = youtube.search().list(q=query,part='id',maxResults=1,type='video').execute()
         id = search_response['items'][0]['id']['videoId']
+        response = youtube.videos().list(part='contentDetails', id=id).execute()
+        duration = response['items'][0]['contentDetails']['duration']
         link = f"http://www.youtube.com/watch?v={id}"
-        return link
+        return [link,duration]
     except HttpError as error:
         print(f"An error occured: {error}")
         return None
 
 def downloadAudio(subject):
-    url = getVideoLink(subject)
+    content = getVideoLink(subject)
     options = {
         'format': 'bestaudio/best',
         'outputmpl': path + '%(title)s.%(ext)s',
@@ -53,11 +60,11 @@ def downloadAudio(subject):
     }
     
     with youtube_dl.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url,download = False)
+        info = ydl.extract_info(content[0],download = False)
         filename = ydl.prepare_filename(info)
-        ydl.download([url])
+        ydl.download([content[0]])
     
-    return filename
+    return [filename,content[1]]
 
 @bot.event
 async def on_ready():
@@ -81,18 +88,93 @@ async def on_message(message):
         return
     if message.content.startswith('!answerME'):
         if message.author.voice:
-            subject = message.content[10:].strip().replace(' ','+')
-            filename = downloadAudio(subject+'+official+audio')
+            subject = message.content[10:].strip().replace(' ', '+')
+            deets = downloadAudio(subject + '+official+audio')
+            filename = deets[0]
+            duration = deets[1]
             voice_channel = message.author.voice.channel
             voice_state = message.guild.voice_client
+
+            # Add the song to the queue
+            queue.append((filename, duration))
+
             if voice_state is None:
                 voice_client = await voice_channel.connect()
-            audio_source = FFmpegPCMAudio(filename.replace('webm','mp3'))
-            await message.channel.send('Playing '+filename)
-            voice_client.play(audio_source)
+
+                # Start playing the queue if it was empty
+                if len(queue) == 1:
+                    await play_queue(voice_client, channel)
+            else:
+                await message.channel.send('Added to queue: ' + filename)
         else:
             await message.channel.send("You need to be in a voice channel to use this command.")
 
-    await bot.process_commands(message)        
+    await bot.process_commands(message)
+
+async def play_queue(voice_client, channel):
+    global is_playing
+    # Check if the queue is empty
+    if not queue:
+        await channel.send('Queue is empty.')
+        is_playing = False
+        await voice_client.disconnect()  # Disconnect the bot from the voice channel
+        return
+
+    # Get the first song from the queue
+    song = queue[0]
+    filename = song[0]
+    duration = song[1]
+
+    audio_source = FFmpegPCMAudio(filename.replace('webm', 'mp3'))
+    voice_client.play(audio_source)
+
+    await channel.send('Playing ' + filename)
+    is_playing = True
+
+    # Wait for the song to finish playing
+    while voice_client.is_playing():
+        await asyncio.sleep(1)
+
+    # Delete the file after playing
+    os.remove(filename.replace('webm', 'mp3'))
+
+    # Remove the finished song from the queue
+    queue.pop(0)
+
+    # Play the next song in the queue
+    await play_queue(voice_client, channel)
+
+@bot.command()
+async def RukJaa(ctx):
+    global is_playing
+
+    voice_state = ctx.message.guild.voice_client
+    if voice_state and voice_state.is_playing():
+        voice_state.pause()
+        is_playing = False
+        await ctx.send("Playback paused.")
+    else:
+        await ctx.send("No audio is currently playing.")
+
+@bot.command()
+async def Chal(ctx):
+    global is_playing
+
+    voice_state = ctx.message.guild.voice_client
+    if voice_state and voice_state.is_paused():
+        voice_state.resume()
+        is_playing = True
+        await ctx.send("Playback resumed.")
+    else:
+        await ctx.send("Playback is not paused.")
+
+@bot.command()
+async def AageJaa(ctx):
+    voice_state = ctx.message.guild.voice_client
+    if voice_state and voice_state.is_playing():
+        voice_state.stop()
+        await ctx.send("Skipped to the next song.")
+    else:
+        await ctx.send("No audio is currently playing.")
 
 bot.run(TOKEN)
