@@ -11,8 +11,8 @@ from discord import FFmpegPCMAudio
 from discord import opus
 
 
-if not discord.opus.is_loaded():
-    discord.opus.load_opus('/opt/homebrew/Cellar/opus/1.4/lib/libopus.0.dylib')
+# if not discord.opus.is_loaded():
+#     discord.opus.load_opus('/opt/homebrew/Cellar/opus/1.4/lib/libopus.0.dylib')
 
 opus_encoder = discord.opus.Encoder()
 
@@ -84,7 +84,9 @@ async def on_message(message):
             subject = message.content[10:].strip().replace(' ','+')
             filename = downloadAudio(subject+'+official+audio')
             voice_channel = message.author.voice.channel
-            voice_client = await voice_channel.connect()
+            voice_state = message.guild.voice_client
+            if voice_state is None:
+                voice_client = await voice_channel.connect()
             audio_source = FFmpegPCMAudio(filename.replace('webm','mp3'))
             await message.channel.send('Playing '+filename)
             voice_client.play(audio_source)
