@@ -9,6 +9,9 @@ import yt_dlp as youtube_dl
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from discord import FFmpegPCMAudio
+import random
+
+playlist_file = 'playlist.txt'
 
 play_lock = asyncio.Lock()
 
@@ -32,6 +35,12 @@ path = '/Users/atharvakhaire/Documents/CS677/audioDownloads/'
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+def find_song_in_playlist(file_path, search_string):
+    with open(file_path, 'r') as file:
+        for line in file:
+            if search_string in line:
+                return True
+    return False
 
 def getVideoLink(query):
     try:
@@ -148,7 +157,8 @@ async def gaananikaal(ctx, index: int):
         await ctx.send("Invalid song index.")
     else:
         removed_song = queue.pop(index - 1)
-        filename = removed_song[0]
+        filename = removed_song
+        print(filename)
         os.remove(filename.replace('webm', 'mp3'))
         await ctx.send(f"Removed song at index {index} from the queue.")
         channel = bot.get_channel(CHANNEL)
@@ -170,7 +180,7 @@ async def baja(ctx):
         duration = deets[1]
 
         async with play_lock:
-            queue.append((filename, duration))
+            queue.append(filename)
 
         if voice_state is None:
             voice_client = await voice_channel.connect()
@@ -196,10 +206,11 @@ async def play_queue(voice_client, channel):
         await voice_client.disconnect()  # Disconnect the bot from the voice channel
         return
 
+    await update_queue_message(channel)
+
     # Get the first song from the queue
     async with play_lock:
-        filename, duration = queue[0]
-        queue.pop(0)
+        filename = queue[0]
 
     audio_source = FFmpegPCMAudio(filename.replace('webm', 'mp3'))
     voice_client.play(audio_source)
@@ -212,7 +223,13 @@ async def play_queue(voice_client, channel):
         await asyncio.sleep(1)
 
     # Delete the file after playing
-    os.remove(filename.replace('webm', 'mp3'))
+    if not (find_song_in_playlist("playlist.txt", filename)):
+        os.remove(filename.replace('webm', 'mp3'))
+
+    # Remove the song from the queue if it's the currently playing song
+    async with play_lock:
+        if queue and queue[0] == filename:
+            queue.pop(0)
 
     # Play the next song in the queue
     await play_queue(voice_client, channel)
@@ -236,14 +253,131 @@ async def update_queue_message(channel):
             pass
 
     if queue:
-        queue_message = "Current Queue:\n"
-        for i, (filename, duration) in enumerate(queue, start=1):
-            queue_message += f"{i}. {filename} - Duration: {duration}\n"
+        queue_message = "---------------------------------------------\nCurrent Queue:\n"
+        for i, filename in enumerate(queue, start=1):
+            queue_message += f"{i}. {filename}\n"
     else:
         queue_message = "Queue is empty."
 
     # Send the updated queue message and store its ID
     queue_display_message = await channel.send(queue_message)
     queue_message_id = queue_display_message.id
+
+@bot.command()
+async def addtoplaylist(ctx):
+    channel = bot.get_channel(CHANNEL)
+    if ctx.author.voice:
+        voice_channel = ctx.author.voice.channel
+        voice_state = ctx.message.guild.voice_client
+
+        # Add the song to the playlist file
+        subject = ctx.message.content[15:].strip().replace(' ', '+')
+        deets = downloadAudio(subject + '+official+audio')
+        filename = deets[0]
+        duration = deets[1]
+
+        if not (find_song_in_playlist("playlist.txt",filename)):
+            with open(playlist_file, 'a') as f:
+                f.write(f"{filename}\n")
+
+        await channel.send('Added to playlist: ' + subject)
+    else:
+        await channel.send("You need to be in a voice channel to use this command.")
+
+@bot.command()
+async def playplaylist(ctx):
+    randomize = False
+    channel = bot.get_channel(CHANNEL)
+    if ctx.author.voice:
+        voice_channel = ctx.author.voice.channel
+        voice_state = ctx.message.guild.voice_client
+
+        if ctx.message.content[14:].strip().replace(' ','') == 'random':
+            randomize = True
+
+        if voice_state is None:
+            voice_client = await voice_channel.connect()
+
+            # Read the songs from the playlist file
+            with open(playlist_file, 'r') as f:
+                playlist = f.readlines()
+
+            # Shuffle the playlist if randomize is True
+            if randomize:
+                random.shuffle(playlist)
+
+            # Add the songs from the playlist to the queue
+            for song in playlist:
+                filename = song.strip()
+                queue.append(filename)
+
+            # Start playing the queue if it was empty
+            if len(queue) > 0 and not is_playing:
+                await play_queue(voice_client, channel)
+        else:
+            await channel.send('I am already in a voice channel.')
+    else:
+        await channel.send("You need to be in a voice channel to use this command.")
+
+@bot.command()
+async def randomize(ctx):
+    global queue
+
+    if len(queue) <= 1:
+        await ctx.send("Queue does not have enough songs to be randomized.")
+        return
+
+    # Get the currently playing song
+    currently_playing = queue[0]
+
+    # Shuffle the queue starting from the second song
+    shuffled_queue = queue[1:]
+    random.shuffle(shuffled_queue)
+
+    # Construct the new queue with the currently playing song at the first position
+    new_queue = [currently_playing] + shuffled_queue
+
+    # Replace the queue with the new randomized queue
+    queue = new_queue
+
+    channel = bot.get_channel(CHANNEL)
+    await update_queue_message(channel)
+    await ctx.send("Queue has been randomized.")
+
+@bot.command()
+async def playlist(ctx):
+    with open(playlist_file, 'r') as f:
+        lines = f.readlines()
+
+    if not lines:
+        await ctx.send("The playlist is empty.")
+        return
+
+    playlist_message = "Playlist:\n"
+    for i, line in enumerate(lines, start=1):
+        playlist_message += f"{i}. {line.strip()}\n"
+
+    await ctx.send(playlist_message)
+
+@bot.command()
+async def removefromplaylist(ctx, index: int):
+    with open(playlist_file, 'r') as f:
+        lines = f.readlines()
+
+    if index < 1 or index > len(lines):
+        await ctx.send("Invalid song index.")
+        return
+
+    removed_song = lines.pop(index - 1)
+
+    os.remove(removed_song.replace("webm","mp3").strip('\n'))
+
+    with open(playlist_file, 'w') as f:
+        f.writelines(lines)
+
+    channel = bot.get_channel(CHANNEL)
+    await update_queue_message(channel)  # Update the queue display
+
+    await ctx.send(f"Removed song at index {index} from the playlist: {removed_song.strip()}.")
 
 bot.run(TOKEN)
