@@ -101,6 +101,7 @@ async def rukjaa(ctx):
         await ctx.send("Playback paused.")
     else:
         await ctx.send("No audio is currently playing.")
+    await ctx.message.delete()
 
 
 @bot.command()
@@ -114,6 +115,7 @@ async def chal(ctx):
         await ctx.send("Playback resumed.")
     else:
         await ctx.send("Playback is not paused.")
+    await ctx.message.delete()
 
 
 @bot.command()
@@ -124,6 +126,7 @@ async def aagejaa(ctx):
         await ctx.send("Skipped to the next song.")
     else:
         await ctx.send("No audio is currently playing.")
+    await ctx.message.delete()
 
 @bot.command()
 async def nikal(ctx):
@@ -137,6 +140,20 @@ async def nikal(ctx):
         await ctx.send("Disconnected from the voice channel.")
     else:
         await ctx.send("I am not connected to a voice channel.")
+    await ctx.message.delete()
+
+@bot.command()
+async def gaananikaal(ctx, index: int):
+    if index < 1 or index > len(queue):
+        await ctx.send("Invalid song index.")
+    else:
+        removed_song = queue.pop(index - 1)
+        filename = removed_song[0]
+        os.remove(filename.replace('webm', 'mp3'))
+        await ctx.send(f"Removed song at index {index} from the queue.")
+        channel = bot.get_channel(CHANNEL)
+        await update_queue_message(channel)  # Update the queue display
+    await ctx.message.delete()
 
 
 @bot.command()
@@ -163,8 +180,11 @@ async def baja(ctx):
                 await play_queue(voice_client, channel)
         else:
             await channel.send('Added to queue: ' + subject)
+
+        await update_queue_message(channel)  # Update the queue display
     else:
         await channel.send("You need to be in a voice channel to use this command.")
+    await ctx.message.delete()
 
 async def play_queue(voice_client, channel):
     global is_playing, is_paused
@@ -196,5 +216,21 @@ async def play_queue(voice_client, channel):
 
     # Play the next song in the queue
     await play_queue(voice_client, channel)
+
+@bot.command()
+async def kyabajaray(ctx):
+    channel = bot.get_channel(CHANNEL)
+    await update_queue_message(channel) # Update the queue display
+    await ctx.message.delete()
+
+async def update_queue_message(channel):
+    if queue:
+        queue_message = "------------------------------------------------\nCurrent Queue:\n"
+        for i, (filename, duration) in enumerate(queue, start=1):
+            queue_message += f"{i}. {filename} - Duration: {duration}\n"
+    else:
+        queue_message = "Queue is empty."
+
+    await channel.send(queue_message)
 
 bot.run(TOKEN)
