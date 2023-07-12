@@ -9,8 +9,6 @@ import yt_dlp as youtube_dl
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from discord import FFmpegPCMAudio
-from discord import opus
-import time
 
 opus_encoder = discord.opus.Encoder()
 
@@ -90,7 +88,7 @@ async def on_message(message):
 
 
 @bot.command()
-async def RukJaa(ctx):
+async def rukjaa(ctx):
     global is_paused
 
     voice_state = ctx.message.guild.voice_client
@@ -103,7 +101,7 @@ async def RukJaa(ctx):
 
 
 @bot.command()
-async def Chal(ctx):
+async def chal(ctx):
     global is_paused
 
     voice_state = ctx.message.guild.voice_client
@@ -116,7 +114,7 @@ async def Chal(ctx):
 
 
 @bot.command()
-async def AageJaa(ctx):
+async def aagejaa(ctx):
     voice_state = ctx.message.guild.voice_client
     if voice_state and (voice_state.is_playing() or is_paused):
         voice_state.stop()
@@ -124,20 +122,29 @@ async def AageJaa(ctx):
     else:
         await ctx.send("No audio is currently playing.")
 
+@bot.command()
+async def nikal(ctx):
+    voice_state = ctx.message.guild.voice_client
+
+    if voice_state:
+        if voice_state.is_playing() or voice_state.is_paused():
+            voice_state.stop()
+        await voice_state.disconnect()
+        await ctx.send("Disconnected from the voice channel.")
+    else:
+        await ctx.send("I am not connected to a voice channel.")
+
 
 @bot.command()
-async def Baja(ctx):
+async def baja(ctx):
     channel = bot.get_channel(CHANNEL)
     if ctx.author.voice:
-        subject = ctx.message.content[7:].strip().replace(' ', '+')
-        deets = downloadAudio(subject + '+official+audio')
-        filename = deets[0]
-        duration = deets[1]
         voice_channel = ctx.author.voice.channel
         voice_state = ctx.message.guild.voice_client
 
         # Add the song to the queue
-        queue.append((filename, duration))
+        subject = ctx.message.content[6:].strip().replace(' ', '+')
+        queue.append(subject)
 
         if voice_state is None:
             voice_client = await voice_channel.connect()
@@ -146,7 +153,7 @@ async def Baja(ctx):
             if len(queue) == 1:
                 await play_queue(voice_client, channel)
         else:
-            await channel.send('Added to queue: ' + filename)
+            await channel.send('Added to queue: ' + subject)
     else:
         await channel.send("You need to be in a voice channel to use this command.")
 
@@ -161,9 +168,11 @@ async def play_queue(voice_client, channel):
         return
 
     # Get the first song from the queue
-    song = queue[0]
-    filename = song[0]
-    duration = song[1]
+    subject = queue[0]
+    queue.pop(0)
+    deets = downloadAudio(subject + '+official+audio')
+    filename = deets[0]
+    duration = deets[1]
 
     audio_source = FFmpegPCMAudio(filename.replace('webm', 'mp3'))
     voice_client.play(audio_source)
@@ -177,9 +186,6 @@ async def play_queue(voice_client, channel):
 
     # Delete the file after playing
     os.remove(filename.replace('webm', 'mp3'))
-
-    # Remove the finished song from the queue
-    queue.pop(0)
 
     # Play the next song in the queue
     await play_queue(voice_client, channel)
