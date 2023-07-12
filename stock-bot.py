@@ -10,6 +10,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from discord import FFmpegPCMAudio
 
+play_lock = asyncio.Lock()
+
 opus_encoder = discord.opus.Encoder()
 
 intents = discord.Intents.default()
@@ -19,6 +21,7 @@ intents.message_content = True
 queue = []
 is_playing = False
 is_paused = False
+filename = ''
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -129,6 +132,7 @@ async def nikal(ctx):
     if voice_state:
         if voice_state.is_playing() or voice_state.is_paused():
             voice_state.stop()
+        #os.remove(filename.replace('webm', 'mp3'))
         await voice_state.disconnect()
         await ctx.send("Disconnected from the voice channel.")
     else:
@@ -144,7 +148,12 @@ async def baja(ctx):
 
         # Add the song to the queue
         subject = ctx.message.content[6:].strip().replace(' ', '+')
-        queue.append(subject)
+        deets = downloadAudio(subject + '+official+audio')
+        filename = deets[0]
+        duration = deets[1]
+
+        async with play_lock:
+            queue.append((filename, duration))
 
         if voice_state is None:
             voice_client = await voice_channel.connect()
@@ -157,9 +166,9 @@ async def baja(ctx):
     else:
         await channel.send("You need to be in a voice channel to use this command.")
 
-
 async def play_queue(voice_client, channel):
     global is_playing, is_paused
+
     # Check if the queue is empty
     if not queue:
         await channel.send('Queue is empty.')
@@ -168,11 +177,9 @@ async def play_queue(voice_client, channel):
         return
 
     # Get the first song from the queue
-    subject = queue[0]
-    queue.pop(0)
-    deets = downloadAudio(subject + '+official+audio')
-    filename = deets[0]
-    duration = deets[1]
+    async with play_lock:
+        filename, duration = queue[0]
+        queue.pop(0)
 
     audio_source = FFmpegPCMAudio(filename.replace('webm', 'mp3'))
     voice_client.play(audio_source)
@@ -189,6 +196,5 @@ async def play_queue(voice_client, channel):
 
     # Play the next song in the queue
     await play_queue(voice_client, channel)
-
 
 bot.run(TOKEN)
