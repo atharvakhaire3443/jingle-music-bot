@@ -63,8 +63,8 @@ def downloadAudio(subject):
         'outputmpl': path + '%(title)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
+            'preferredcodec': 'flac',
+            'preferredquality': '320',
         }],
     }
 
@@ -147,7 +147,7 @@ async def nikal(ctx):
         #os.remove(filename.replace('webm', 'mp3'))
         for song in queue:
             if not (find_song_in_playlist("playlist.txt", filename)):
-                os.remove(song.replace('webm', 'mp3'))
+                os.remove(song.replace('webm', 'flac'))
         await voice_state.disconnect()
         await ctx.send("Disconnected from the voice channel.")
     else:
@@ -162,12 +162,24 @@ async def gaananikaal(ctx, index: int):
         removed_song = queue.pop(index - 1)
         filename = removed_song
         print(filename)
-        os.remove(filename.replace('webm', 'mp3'))
+        #os.remove(filename.replace('webm', 'mp3'))
+        os.remove(filename.replace("webm","flac"))
         await ctx.send(f"Removed song at index {index} from the queue.")
         channel = bot.get_channel(CHANNEL)
         await update_queue_message(channel)  # Update the queue display
     await ctx.message.delete()
 
+@bot.command()
+async def shift(ctx, original_index: int, final_index: int):
+    if original_index < 1 or original_index > len(queue) or final_index < 1 or final_index > len(queue):
+        await ctx.send("Invalid song index.")
+    else:
+        filename = queue.pop(original_index - 1)
+        queue.insert(final_index-1,filename)
+        await ctx.send(f"Shifted song at index {original_index} to index {final_index}.")
+        channel = bot.get_channel(CHANNEL)
+        await update_queue_message(channel)
+    await ctx.message.delete()
 
 @bot.command()
 async def baja(ctx):
@@ -215,7 +227,8 @@ async def play_queue(voice_client, channel):
     async with play_lock:
         filename = queue[0]
 
-    audio_source = FFmpegPCMAudio(filename.replace('webm', 'mp3'))
+    #audio_source = FFmpegPCMAudio(filename.replace('webm', 'mp3'))
+    audio_source = FFmpegPCMAudio(filename.replace("webm","flac"))
     voice_client.play(audio_source)
 
     await channel.send('Playing ' + filename)
@@ -227,7 +240,8 @@ async def play_queue(voice_client, channel):
 
     # Delete the file after playing
     if not (find_song_in_playlist("playlist.txt", filename)):
-        os.remove(filename.replace('webm', 'mp3'))
+        #os.remove(filename.replace('webm', 'mp3'))
+        os.remove(filename.replace("webm","flac"))
 
     # Remove the song from the queue if it's the currently playing song
     async with play_lock:
@@ -286,6 +300,7 @@ async def addtoplaylist(ctx):
         await channel.send('Added to playlist: ' + subject)
     else:
         await channel.send("You need to be in a voice channel to use this command.")
+    await ctx.message.delete()
 
 @bot.command()
 async def playplaylist(ctx):
@@ -321,6 +336,7 @@ async def playplaylist(ctx):
             await channel.send('I am already in a voice channel.')
     else:
         await channel.send("You need to be in a voice channel to use this command.")
+    await ctx.message.delete()
 
 @bot.command()
 async def randomize(ctx):
@@ -346,6 +362,7 @@ async def randomize(ctx):
     channel = bot.get_channel(CHANNEL)
     await update_queue_message(channel)
     await ctx.send("Queue has been randomized.")
+    await ctx.message.delete()
 
 @bot.command()
 async def playlist(ctx):
@@ -361,6 +378,7 @@ async def playlist(ctx):
         playlist_message += f"{i}. {line.strip()}\n"
 
     await ctx.send(playlist_message)
+    await ctx.message.delete()
 
 @bot.command()
 async def removefromplaylist(ctx, index: int):
@@ -373,7 +391,8 @@ async def removefromplaylist(ctx, index: int):
 
     removed_song = lines.pop(index - 1)
 
-    os.remove(removed_song.replace("webm","mp3").strip('\n'))
+    os.remove(removed_song.replace("webm","flac").strip('\n'))
+    #os.remove(removed_song.replace("webm","mp3").strip('\n'))
 
     with open(playlist_file, 'w') as f:
         f.writelines(lines)
@@ -382,5 +401,6 @@ async def removefromplaylist(ctx, index: int):
     await update_queue_message(channel)  # Update the queue display
 
     await ctx.send(f"Removed song at index {index} from the playlist: {removed_song.strip()}.")
+    await ctx.message.delete()
 
 bot.run(TOKEN)
