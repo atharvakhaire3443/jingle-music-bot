@@ -145,6 +145,9 @@ async def nikal(ctx):
         if voice_state.is_playing() or voice_state.is_paused():
             voice_state.stop()
         #os.remove(filename.replace('webm', 'mp3'))
+        for song in queue:
+            if not (find_song_in_playlist("playlist.txt", filename)):
+                os.remove(song.replace('webm', 'mp3'))
         await voice_state.disconnect()
         await ctx.send("Disconnected from the voice channel.")
     else:
