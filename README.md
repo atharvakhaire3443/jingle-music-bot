@@ -1,6 +1,6 @@
 # dc-bot
 
-Commands - 
+Commands -  
         !play <song>: Play a song  
         !pause: Pause the current playback  
         !resume: Resume the paused playback  
