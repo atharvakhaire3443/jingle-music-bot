@@ -1,4 +1,4 @@
-# dc-bot
+# Jingle
 
 Commands -  
         !play <song>: Play a song  
