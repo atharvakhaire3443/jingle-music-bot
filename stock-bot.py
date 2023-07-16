@@ -100,7 +100,7 @@ async def on_message(message):
 
 
 @bot.command()
-async def rukjaa(ctx):
+async def pause(ctx):
     global is_paused
 
     voice_state = ctx.message.guild.voice_client
@@ -114,7 +114,7 @@ async def rukjaa(ctx):
 
 
 @bot.command()
-async def chal(ctx):
+async def resume(ctx):
     global is_paused
 
     voice_state = ctx.message.guild.voice_client
@@ -128,7 +128,7 @@ async def chal(ctx):
 
 
 @bot.command()
-async def aagejaa(ctx):
+async def skip(ctx):
     voice_state = ctx.message.guild.voice_client
     if voice_state and (voice_state.is_playing() or is_paused):
         voice_state.stop()
@@ -138,7 +138,7 @@ async def aagejaa(ctx):
     await ctx.message.delete()
 
 @bot.command()
-async def nikal(ctx):
+async def disconnect(ctx):
     voice_state = ctx.message.guild.voice_client
 
     if voice_state:
@@ -155,7 +155,7 @@ async def nikal(ctx):
     await ctx.message.delete()
 
 @bot.command()
-async def gaananikaal(ctx, index: int):
+async def remove(ctx, index: int):
     if index < 1 or index > len(queue):
         await ctx.send("Invalid song index.")
     else:
@@ -182,7 +182,7 @@ async def shift(ctx, original_index: int, final_index: int):
     await ctx.message.delete()
 
 @bot.command()
-async def baja(ctx):
+async def play(ctx):
     channel = bot.get_channel(CHANNEL)
     if ctx.author.voice:
         voice_channel = ctx.author.voice.channel
@@ -402,5 +402,28 @@ async def removefromplaylist(ctx, index: int):
 
     await ctx.send(f"Removed song at index {index} from the playlist: {removed_song.strip()}.")
     await ctx.message.delete()
+
+@bot.command()
+async def info(ctx):
+    command_list = [
+        "Commands:",
+        "!play <song>: Play a song",
+        "!pause: Pause the current playback",
+        "!resume: Resume the paused playback",
+        "!skip: Skip to the next song",
+        "!disconnect: Disconnect the bot from the voice channel",
+        "!remove <index>: Remove a song from the queue",
+        "!shift <original_index> <final_index>: Shift a song in the queue",
+        "!queue: Display the current queue",
+        "!addtoplaylist <song>: Add a song to the playlist",
+        "!playplaylist [random]: Play the songs from the playlist",
+        "!randomize: Randomize the current queue",
+        "!playlist: Display the playlist",
+        "!removefromplaylist <index>: Remove a song from the playlist"
+    ]
+
+    help_message = "\n".join(command_list)
+    await ctx.send(help_message)
+
 
 bot.run(TOKEN)
