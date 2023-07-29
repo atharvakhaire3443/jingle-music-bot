@@ -146,6 +146,7 @@ async def disconnect(ctx):
             voice_state.stop()
         #os.remove(filename.replace('webm', 'mp3'))
         for song in queue:
+            queue.pop(song)
             if not (find_song_in_playlist("playlist.txt", filename)):
                 os.remove(song.replace('webm', 'flac'))
         await voice_state.disconnect()
@@ -252,7 +253,7 @@ async def play_queue(voice_client, channel):
     await play_queue(voice_client, channel)
 
 @bot.command()
-async def kyabajaray(ctx):
+async def displayqueue(ctx):
     channel = bot.get_channel(CHANNEL)
     await update_queue_message(channel)
 
