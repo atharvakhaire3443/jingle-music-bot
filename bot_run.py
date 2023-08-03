@@ -146,7 +146,7 @@ async def disconnect(ctx):
             voice_state.stop()
         #os.remove(filename.replace('webm', 'mp3'))
         for song in queue:
-            queue.pop(song)
+            queue.remove(song)
             if not (find_song_in_playlist("playlist.txt", filename)):
                 os.remove(song.replace('webm', 'flac'))
         await voice_state.disconnect()
@@ -162,9 +162,10 @@ async def remove(ctx, index: int):
     else:
         removed_song = queue.pop(index - 1)
         filename = removed_song
-        print(filename)
         #os.remove(filename.replace('webm', 'mp3'))
-        os.remove(filename.replace("webm","flac"))
+        if not (find_song_in_playlist("playlist.txt", filename)):
+        #os.remove(filename.replace('webm', 'mp3'))
+            os.remove(filename.replace("webm","flac"))
         await ctx.send(f"Removed song at index {index} from the queue.")
         channel = bot.get_channel(CHANNEL)
         await update_queue_message(channel)  # Update the queue display
@@ -403,6 +404,21 @@ async def removefromplaylist(ctx, index: int):
 
     await ctx.send(f"Removed song at index {index} from the playlist: {removed_song.strip()}.")
     await ctx.message.delete()
+
+@bot.command()
+async def flushplaylist(ctx):
+    with open(playlist_file, 'r') as f:
+        playlist = f.readlines()
+
+    for song in playlist:
+        filename = song.strip()
+        playlist.remove(song)
+        os.remove(filename.replace("webm","flac").strip('\n'))
+    
+    with open(playlist_file, 'w') as f:
+        f.writelines(playlist)
+    
+    await ctx.send("Playlist flushed.")
 
 @bot.command()
 async def info(ctx):
