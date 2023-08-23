@@ -10,16 +10,24 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from discord import FFmpegPCMAudio
 import random
+import sqlite3
+import pandas as pd
+
+conn = sqlite3.connect('jingle.db')
+
+cur = conn.cursor()
 
 playlist_file = 'playlist.txt'
 
-play_lock = asyncio.Lock()
+play_lock_df = pd.DataFrame(columns=['guild','lock'])
 
 opus_encoder = discord.opus.Encoder()
 
 intents = discord.Intents.default()
 intents.guilds = True
 intents.message_content = True
+
+# client = discord.Bot(intents=intents)
 
 queue = []
 is_playing = False
@@ -28,8 +36,6 @@ filename = ''
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-GUILD = os.getenv('DISCORD_GUILD')
-CHANNEL = int(os.getenv('CHANNEL'))
 GOOGLE_KEY = os.getenv('GOOGLE_API_KEY')
 path = '/Users/atharvakhaire/Documents/CS677/audioDownloads/'
 
@@ -78,26 +84,49 @@ def downloadAudio(subject):
 
 @bot.event
 async def on_ready():
-    guild = discord.utils.find(lambda g: g.name == GUILD, bot.guilds)
-    channel = bot.get_channel(CHANNEL)
-
-    print(
-        f'{bot.user} is connected to the following guild:\n'
-        f'{guild.name}(id: {guild.id})'
-    )
-
-    if channel:
-        await channel.send("I'm back, bitches!!!")
-    else:
-        print('Channel not found')
-
+    cur.execute('select * from servers')
+    guild_data = cur.fetchall()
+    print(guild_data)
+    print(bot.guilds)
+    
+    for data in guild_data:
+        guild_name = data[0]
+        channel_id = data[1]
+        print(guild_name)
+        
+        guild = discord.utils.get(bot.guilds, name=guild_name)
+        channel = bot.get_channel(channel_id)
+        
+        if guild and channel:
+            existing_channel_names = {c.name for c in guild.text_channels}
+            print(existing_channel_names)
+            
+            print(
+                f'{bot.user} is connected to the following guild:\n'
+                f'{guild.name}(id: {guild.id})'
+            )
+            
+            if 'jingle-space' in existing_channel_names:
+                print(f'Text channel already exists in {guild.name}')
+            else:
+                # Create a new text channel
+                new_channel = await guild.create_text_channel('jingle-space')
+                print(new_channel)
+                print(f'Created a new text channel in {guild.name}')
+                await new_channel.send("Welcome to Jingle-Space! Feel free to play some tunes here.")
+                cur.execute(f"update servers set channel_id = {new_channel.id} where name = '{guild_name}'")
+                conn.commit()
+        
+        else:
+            print('Guild or channel not found')
+        play_lock_df.loc[len(play_lock_df)] = [guild_name,asyncio.Lock()]
+    print(play_lock_df)
 
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
     await bot.process_commands(message)
-
 
 @bot.command()
 async def pause(ctx):
@@ -185,9 +214,20 @@ async def shift(ctx, original_index: int, final_index: int):
 
 @bot.command()
 async def play(ctx):
-    channel = bot.get_channel(CHANNEL)
+    # Fetch the server-specific channel ID from SQL based on ctx.guild.name
+    cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+    row = cur.fetchone()
+
+    if row is None:
+        await ctx.send("This server's channel ID is not found in the database.")
+        return
+
+    channel_id = row[0]
+    channel = bot.get_channel(channel_id)
+
     if ctx.author.voice:
         voice_channel = ctx.author.voice.channel
+        print(voice_channel)
         voice_state = ctx.message.guild.voice_client
 
         # Add the song to the queue
@@ -195,8 +235,8 @@ async def play(ctx):
         deets = downloadAudio(subject + '+official+audio')
         filename = deets[0]
         duration = deets[1]
-
-        async with play_lock:
+        print(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0])
+        async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
             queue.append(filename)
 
         if voice_state is None:
@@ -204,7 +244,7 @@ async def play(ctx):
 
             # Start playing the queue if it was empty
             if len(queue) == 1:
-                await play_queue(voice_client, channel)
+                await play_queue(voice_client, channel, ctx)
         # else:
         #     await channel.send('Added to queue: ' + subject)
 
@@ -213,8 +253,9 @@ async def play(ctx):
         await channel.send("You need to be in a voice channel to use this command.")
     await ctx.message.delete()
 
-async def play_queue(voice_client, channel):
-    global is_playing, is_paused
+
+async def play_queue(voice_client, channel, ctx):
+    global is_playing, is_paused, queue
 
     # Check if the queue is empty
     if not queue:
@@ -226,27 +267,25 @@ async def play_queue(voice_client, channel):
     await update_queue_message(channel)
 
     # Get the first song from the queue
-    async with play_lock:
+    async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
         filename = queue[0]
 
-    #audio_source = FFmpegPCMAudio(filename.replace('webm', 'mp3'))
-    audio_source = FFmpegPCMAudio(filename.replace("webm","flac"))
+    audio_source = FFmpegPCMAudio(filename.replace("webm", "flac"))
     voice_client.play(audio_source)
 
     await channel.send('Playing ' + filename)
     is_playing = True
 
-    # Wait for the song to finish playing
+    # Wait for the song to finish playing or being paused
     while voice_client.is_playing() or is_paused:
         await asyncio.sleep(1)
 
     # Delete the file after playing
     if not (find_song_in_playlist("playlist.txt", filename)):
-        #os.remove(filename.replace('webm', 'mp3'))
-        os.remove(filename.replace("webm","flac"))
+        os.remove(filename.replace("webm", "flac"))
 
     # Remove the song from the queue if it's the currently playing song
-    async with play_lock:
+    async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
         if queue and queue[0] == filename:
             queue.pop(0)
 
