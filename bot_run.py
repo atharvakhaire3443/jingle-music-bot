@@ -12,6 +12,7 @@ from discord import FFmpegPCMAudio
 import random
 import sqlite3
 import pandas as pd
+import uuid
 
 conn = sqlite3.connect('jingle.db')
 
@@ -19,7 +20,7 @@ cur = conn.cursor()
 
 playlist_file = 'playlist.txt'
 
-play_lock_df = pd.DataFrame(columns=['guild','lock'])
+play_lock_df = pd.DataFrame(columns=['guild','lock','is_playing','is_paused'])
 
 opus_encoder = discord.opus.Encoder()
 
@@ -119,7 +120,7 @@ async def on_ready():
         
         else:
             print('Guild or channel not found')
-        play_lock_df.loc[len(play_lock_df)] = [guild_name,asyncio.Lock()]
+        play_lock_df.loc[len(play_lock_df)] = [guild_name,asyncio.Lock(),False,False]
     print(play_lock_df)
 
 @bot.event
@@ -196,8 +197,16 @@ async def remove(ctx, index: int):
         #os.remove(filename.replace('webm', 'mp3'))
             os.remove(filename.replace("webm","flac"))
         await ctx.send(f"Removed song at index {index} from the queue.")
-        channel = bot.get_channel(CHANNEL)
-        await update_queue_message(channel)  # Update the queue display
+        cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+        row = cur.fetchone()
+
+        if row is None:
+            await ctx.send("This server's channel ID is not found in the database.")
+            return
+
+        channel_id = row[0]
+        channel = bot.get_channel(channel_id)
+        await update_queue_message(channel,ctx)  # Update the queue display
     await ctx.message.delete()
 
 @bot.command()
@@ -208,7 +217,15 @@ async def shift(ctx, original_index: int, final_index: int):
         filename = queue.pop(original_index - 1)
         queue.insert(final_index-1,filename)
         await ctx.send(f"Shifted song at index {original_index} to index {final_index}.")
-        channel = bot.get_channel(CHANNEL)
+        cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+        row = cur.fetchone()
+
+        if row is None:
+            await ctx.send("This server's channel ID is not found in the database.")
+            return
+
+        channel_id = row[0]
+        channel = bot.get_channel(channel_id)
         await update_queue_message(channel)
     await ctx.message.delete()
 
@@ -237,69 +254,105 @@ async def play(ctx):
         duration = deets[1]
         print(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0])
         async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
-            queue.append(filename)
+            try:
+                cur.execute(f"select min(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+                row = cur.fetchone()
+                next_queue_position = int(row[0]) + 1
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{filename}','{ctx.guild.name}',{next_queue_position})")
+                conn.commit()
+            except:
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{filename}','{ctx.guild.name}',1)")
+                conn.commit()
 
         if voice_state is None:
             voice_client = await voice_channel.connect()
 
             # Start playing the queue if it was empty
-            if len(queue) == 1:
+            cur.execute(f"select count(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+            row = cur.fetchone()
+            temp = row[0]
+            if temp > 0:
                 await play_queue(voice_client, channel, ctx)
         # else:
         #     await channel.send('Added to queue: ' + subject)
 
-        await update_queue_message(channel)  # Update the queue display
+        await update_queue_message(channel,ctx)  # Update the queue display
     else:
         await channel.send("You need to be in a voice channel to use this command.")
     await ctx.message.delete()
 
 
 async def play_queue(voice_client, channel, ctx):
-    global is_playing, is_paused, queue
 
     # Check if the queue is empty
-    if not queue:
+    cur.execute(f"select count(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+    row = cur.fetchone()
+    temp = row[0]
+    if temp == 0:
         await channel.send('Queue is empty.')
-        is_playing = False
+        play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_playing'] = False
         await voice_client.disconnect()  # Disconnect the bot from the voice channel
         return
 
-    await update_queue_message(channel)
+    await update_queue_message(channel,ctx)
 
-    # Get the first song from the queue
+   # Get the first song from the queue
     async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
-        filename = queue[0]
+        cur.execute(f"select song_name from global_queue where server_name = '{ctx.guild.name}' and queue_position = (select min(queue_position) from global_queue where server_name = '{ctx.guild.name}')")
+        row = cur.fetchone()
+        filename = row[0]
 
     audio_source = FFmpegPCMAudio(filename.replace("webm", "flac"))
     voice_client.play(audio_source)
 
     await channel.send('Playing ' + filename)
-    is_playing = True
+    play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_playing'] = True
 
     # Wait for the song to finish playing or being paused
-    while voice_client.is_playing() or is_paused:
+    while voice_client.is_playing() or play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'][0]:
         await asyncio.sleep(1)
 
-    # Delete the file after playing
-    if not (find_song_in_playlist("playlist.txt", filename)):
-        os.remove(filename.replace("webm", "flac"))
+    cur.execute(f"select song_name from global_playlist")
+    song_data = cur.fetchall()
 
+    flag = False
+    for data in song_data:
+        song = data[0]
+        if song == filename:
+            flag = True
+    
+    if not flag:
+        os.remove(filename.replace("webm", "flac"))
+    
+    cur.execute(f"select song_name, instance_id from global_queue where server_name = '{ctx.guild.name}' and queue_position = (select min(queue_position) from global_queue where server_name = '{ctx.guild.name}')")
+    row = cur.fetchone()
+    current_song = row[0]
+    instance_id = row[1]
     # Remove the song from the queue if it's the currently playing song
     async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
-        if queue and queue[0] == filename:
-            queue.pop(0)
+        if current_song == filename:
+            cur.execute(f"delete from global_queue where server_name = '{ctx.guild.name}' and instance_id = '{instance_id}'")
+            conn.commit()
 
     # Play the next song in the queue
-    await play_queue(voice_client, channel)
+    await play_queue(voice_client, channel, ctx)
 
 @bot.command()
 async def displayqueue(ctx):
-    channel = bot.get_channel(CHANNEL)
-    await update_queue_message(channel)
+    cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+    row = cur.fetchone()
+
+    if row is None:
+        await ctx.send("This server's channel ID is not found in the database.")
+        return
+
+    channel_id = row[0]
+    channel = bot.get_channel(channel_id)
+    await update_queue_message(channel,ctx)
 
 queue_message_id = None  # Store the ID of the queue display message
 
-async def update_queue_message(channel):
+async def update_queue_message(channel,ctx):
     global queue_message_id
 
     # Delete the previous queue display message if it exists
@@ -309,6 +362,16 @@ async def update_queue_message(channel):
             await previous_message.delete()
         except discord.NotFound:
             pass
+
+    cur.execute(f"select song_name from global_queue where server_name = '{ctx.guild.name}'")
+    rows = cur.fetchall()
+    queue = []
+
+    print(rows)
+
+    for song in rows:
+        queue.append(song[0])
+    print(queue)
 
     if queue:
         queue_message = "---------------------------------------------\nCurrent Queue:\n"
@@ -323,7 +386,15 @@ async def update_queue_message(channel):
 
 @bot.command()
 async def addtoplaylist(ctx):
-    channel = bot.get_channel(CHANNEL)
+    cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+    row = cur.fetchone()
+
+    if row is None:
+        await ctx.send("This server's channel ID is not found in the database.")
+        return
+
+    channel_id = row[0]
+    channel = bot.get_channel(channel_id)
     if ctx.author.voice:
         voice_channel = ctx.author.voice.channel
         voice_state = ctx.message.guild.voice_client
@@ -334,9 +405,16 @@ async def addtoplaylist(ctx):
         filename = deets[0]
         duration = deets[1]
 
-        if not (find_song_in_playlist("playlist.txt",filename)):
-            with open(playlist_file, 'a') as f:
-                f.write(f"{filename}\n")
+        cur.execute(f"select song_name from global_playlist where server_name = '{ctx.guild.name}'")
+        rows = cur.fetchall()
+
+        flag = False
+        for song in rows:
+            if song[0] == filename:
+                flag = True
+        if not flag:
+            cur.execute(f"insert into global_playlist(instance_id,song_name,server_name) values('{str(uuid.uuid4())}','{filename}','{ctx.guild.name}')")
+            conn.commit()
 
         await channel.send('Added to playlist: ' + subject)
     else:
@@ -346,7 +424,15 @@ async def addtoplaylist(ctx):
 @bot.command()
 async def playplaylist(ctx):
     randomize = False
-    channel = bot.get_channel(CHANNEL)
+    cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+    row = cur.fetchone()
+
+    if row is None:
+        await ctx.send("This server's channel ID is not found in the database.")
+        return
+
+    channel_id = row[0]
+    channel = bot.get_channel(channel_id)
     if ctx.author.voice:
         voice_channel = ctx.author.voice.channel
         voice_state = ctx.message.guild.voice_client
@@ -358,17 +444,24 @@ async def playplaylist(ctx):
             voice_client = await voice_channel.connect()
 
             # Read the songs from the playlist file
-            with open(playlist_file, 'r') as f:
-                playlist = f.readlines()
+
+            cur.execute(f"select song_name from global_playlist where server_name = '{ctx.guild.name}'")
+            rows = cur.fetchall()
 
             # Shuffle the playlist if randomize is True
             if randomize:
-                random.shuffle(playlist)
+                random.shuffle(rows)
 
-            # Add the songs from the playlist to the queue
-            for song in playlist:
-                filename = song.strip()
-                queue.append(filename)
+            for song in rows:
+                try:
+                    cur.execute(f"select min(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+                    row = cur.fetchone()
+                    next_queue_position = int(row[0]) + 1
+                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{song[0]}','{ctx.guild.name}',{next_queue_position})")
+                    conn.commit()
+                except:
+                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{song[0]}','{ctx.guild.name}',1)")
+                    conn.commit()
 
             # Start playing the queue if it was empty
             if len(queue) > 0 and not is_playing:
@@ -400,8 +493,16 @@ async def randomize(ctx):
     # Replace the queue with the new randomized queue
     queue = new_queue
 
-    channel = bot.get_channel(CHANNEL)
-    await update_queue_message(channel)
+    cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+    row = cur.fetchone()
+
+    if row is None:
+        await ctx.send("This server's channel ID is not found in the database.")
+        return
+
+    channel_id = row[0]
+    channel = bot.get_channel(channel_id)
+    await update_queue_message(channel,ctx)
     await ctx.send("Queue has been randomized.")
     await ctx.message.delete()
 
@@ -438,8 +539,16 @@ async def removefromplaylist(ctx, index: int):
     with open(playlist_file, 'w') as f:
         f.writelines(lines)
 
-    channel = bot.get_channel(CHANNEL)
-    await update_queue_message(channel)  # Update the queue display
+    cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
+    row = cur.fetchone()
+
+    if row is None:
+        await ctx.send("This server's channel ID is not found in the database.")
+        return
+
+    channel_id = row[0]
+    channel = bot.get_channel(channel_id)
+    await update_queue_message(channel,ctx)  # Update the queue display
 
     await ctx.send(f"Removed song at index {index} from the playlist: {removed_song.strip()}.")
     await ctx.message.delete()
