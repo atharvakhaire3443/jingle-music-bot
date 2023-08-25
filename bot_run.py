@@ -168,8 +168,9 @@ async def resume(ctx):
 
 
 @bot.command()
-async def skip(ctx):
+async def next(ctx):
     voice_state = ctx.message.guild.voice_client
+    is_paused = list(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'])[0]
     if voice_state and (voice_state.is_playing() or is_paused):
         voice_state.stop()
         await ctx.send("Skipped to the next song.")
@@ -325,7 +326,7 @@ async def play_queue(voice_client, channel, ctx):
     while voice_client.is_playing() or is_paused:
         await asyncio.sleep(1)
 
-    cur.execute(f"select song_name, instance_id from global_queue where server_name = ? and queue_position = (select min(queue_position) from global_queue where server_name = ?",(ctx.guild.name,ctx.guild.name))
+    cur.execute(f"select song_name, instance_id from global_queue where server_name = ? and queue_position = (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
     row = cur.fetchone()
     current_song = row[0]
     instance_id = row[1]
@@ -494,7 +495,7 @@ async def playplaylist(ctx):
 async def randomize(ctx):
     global queue
 
-    cur.execute(f"select song_name from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global queue where server_name = ?",(ctx.guild.name,ctx.guild.name))
+    cur.execute(f"select song_name from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
     rows = cur.fetchall()
     if len(rows) <= 2:
         await ctx.send("Queue does not have enough songs to be randomized.")
@@ -503,7 +504,7 @@ async def randomize(ctx):
     # Shuffle the queue starting from the second song
     random.shuffle(rows)
 
-    cur.execute(f"delete from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global_queue where server_name = ?",(ctx.guild.name,ctx.guild.name))
+    cur.execute(f"delete from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
     conn.commit()
     for song in rows:
             cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
