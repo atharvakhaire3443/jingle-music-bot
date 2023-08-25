@@ -222,7 +222,10 @@ async def remove(ctx, index: int):
 
 @bot.command()
 async def shift(ctx, original_index: int, final_index: int):
-    if original_index < 1 or original_index > len(queue) or final_index < 1 or final_index > len(queue):
+
+    cur.execute(f"select count(*) from global_queue where server_name = ?",(ctx.guild.name,))
+    rows = cur.fetchall()
+    if original_index < 1 or original_index > len(rows) or final_index < 1 or final_index > len(rows):
         await ctx.send("Invalid song index.")
     else:
         filename = queue.pop(original_index - 1)
@@ -549,21 +552,12 @@ async def playlist(ctx):
     await ctx.message.delete()
 
 @bot.command()
-async def removefromplaylist(ctx, index: int):
-    with open(playlist_file, 'r') as f:
-        lines = f.readlines()
-
-    if index < 1 or index > len(lines):
-        await ctx.send("Invalid song index.")
-        return
-
-    removed_song = lines.pop(index - 1)
-
-    os.remove(removed_song.replace("webm","flac").strip('\n'))
-    #os.remove(removed_song.replace("webm","mp3").strip('\n'))
-
-    with open(playlist_file, 'w') as f:
-        f.writelines(lines)
+async def removefromplaylist(ctx, instance_id):
+    try:
+        cur.execute(f"delete from global_playlist where server_name = ? and instance_id = ?",(ctx.guild.name,instance_id))
+        conn.commit()
+    except:
+        await ctx.send("No such song exists in the playlist")
 
     cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
     row = cur.fetchone()
@@ -576,22 +570,15 @@ async def removefromplaylist(ctx, index: int):
     channel = bot.get_channel(channel_id)
     await update_queue_message(channel,ctx)  # Update the queue display
 
-    await ctx.send(f"Removed song at index {index} from the playlist: {removed_song.strip()}.")
+    await ctx.send(f"Song removed.")
     await ctx.message.delete()
 
 @bot.command()
 async def flushplaylist(ctx):
-    with open(playlist_file, 'r') as f:
-        playlist = f.readlines()
-
-    for song in playlist:
-        filename = song.strip()
-        playlist.remove(song)
-        os.remove(filename.replace("webm","flac").strip('\n'))
-    
-    with open(playlist_file, 'w') as f:
-        f.writelines(playlist)
-    
+    try:
+        cur.execute(f"delete from global_playlist where server_name = ?",(ctx.guild.name,))
+    except:
+        await ctx.send("Playlist for this server does not exist")
     await ctx.send("Playlist flushed.")
 
 @bot.command()
@@ -601,7 +588,7 @@ async def info(ctx):
         "!play <song>: Play a song",
         "!pause: Pause the current playback",
         "!resume: Resume the paused playback",
-        "!skip: Skip to the next song",
+        "!next: Skip to the next song",
         "!disconnect: Disconnect the bot from the voice channel",
         "!remove <index>: Remove a song from the queue",
         "!shift <original_index> <final_index>: Shift a song in the queue",
