@@ -186,10 +186,20 @@ async def disconnect(ctx):
         if voice_state.is_playing() or voice_state.is_paused():
             voice_state.stop()
         #os.remove(filename.replace('webm', 'mp3'))
-        for song in queue:
-            queue.remove(song)
-            if not (find_song_in_playlist("playlist.txt", filename)):
-                os.remove(song.replace('webm', 'flac'))
+
+        cur.execute(f"select song_name from global_queue where server_name = ?",(ctx.guild.name,))
+        rows = cur.fetchall()
+        for song in rows:
+            cur.execute(f"select song_name from global_playlist")
+            songs = cur.fetchall()
+            flag = False
+            for i in songs:
+                if song[0] == i:
+                    flag = True
+            if not flag:
+                os.remove(song[0].replace('webm', 'flac'))
+            cur.execute(f"delete from global_queue where server_name = ? and song_name = ?",(ctx.guild.name,song[0]))
+            conn.commit()
         await voice_state.disconnect()
         await ctx.send("Disconnected from the voice channel.")
     else:
@@ -198,15 +208,33 @@ async def disconnect(ctx):
 
 @bot.command()
 async def remove(ctx, index: int):
-    if index < 1 or index > len(queue):
+
+    cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
+    count = (cur.fetchone())[0]
+    if index < 2 or index > count:
         await ctx.send("Invalid song index.")
     else:
-        removed_song = queue.pop(index - 1)
-        filename = removed_song
-        #os.remove(filename.replace('webm', 'mp3'))
-        if not (find_song_in_playlist("playlist.txt", filename)):
-        #os.remove(filename.replace('webm', 'mp3'))
-            os.remove(filename.replace("webm","flac"))
+        cur.execute(f"select song_name from global_queue where server_name = ? and queue_position = ?",(ctx.guild.name,index))
+        song = cur.fetchone()
+
+        cur.execute(f"select song_name from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
+        rows = cur.fetchall()
+
+        rows.remove(song)
+
+        cur.execute(f"delete from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
+        conn.commit()
+        for song in rows:
+            try:
+                cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
+                row = cur.fetchone()
+                next_queue_position = int(row[0]) + 1
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),song[0],ctx.guild.name,next_queue_position))
+                conn.commit()
+            except:
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),song[0],ctx.guild.name,1))
+                conn.commit()
+
         await ctx.send(f"Removed song at index {index} from the queue.")
         cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
         row = cur.fetchone()
@@ -225,7 +253,7 @@ async def shift(ctx, original_index: int, final_index: int):
 
     cur.execute(f"select count(*) from global_queue where server_name = ?",(ctx.guild.name,))
     rows = cur.fetchall()
-    if original_index < 1 or original_index > len(rows) or final_index < 1 or final_index > len(rows):
+    if original_index < 2 or original_index > len(rows) or final_index < 2 or final_index > len(rows):
         await ctx.send("Invalid song index.")
     else:
         filename = queue.pop(original_index - 1)
@@ -445,7 +473,7 @@ async def addtoplaylist(ctx):
 
 @bot.command()
 async def playplaylist(ctx):
-    randomize = False
+    # Fetch the server-specific channel ID from SQL based on ctx.guild.name
     cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
     row = cur.fetchone()
 
@@ -455,41 +483,39 @@ async def playplaylist(ctx):
 
     channel_id = row[0]
     channel = bot.get_channel(channel_id)
+
     if ctx.author.voice:
         voice_channel = ctx.author.voice.channel
+        print(voice_channel)
         voice_state = ctx.message.guild.voice_client
 
-        if ctx.message.content[14:].strip().replace(' ','') == 'random':
-            randomize = True
+    cur.execute(f"select song_name from global_playlist where server_name = ?",(ctx.guild.name,))
+    rows = cur.fetchall()
 
+    for song in rows:
+        try:
+            cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
+            row = cur.fetchone()
+            next_queue_position = int(row[0]) + 1
+            cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),song[0],ctx.guild.name,next_queue_position))
+            conn.commit()
+        except:
+            cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),song[0],ctx.guild.name,1))
+            conn.commit()
+    
         if voice_state is None:
             voice_client = await voice_channel.connect()
 
-            # Read the songs from the playlist file
-
-            cur.execute(f"select song_name from global_playlist where server_name = ?",(ctx.guild.name,))
-            rows = cur.fetchall()
-
-            # Shuffle the playlist if randomize is True
-            if randomize:
-                random.shuffle(rows)
-
-            for song in rows:
-                try:
-                    cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
-                    row = cur.fetchone()
-                    next_queue_position = int(row[0]) + 1
-                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),filename,ctx.guild.name,next_queue_position))
-                    conn.commit()
-                except:
-                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),filename,ctx.guild.name,1))
-                    conn.commit()
-
             # Start playing the queue if it was empty
-            if len(queue) > 0 and not is_playing:
-                await play_queue(voice_client, channel)
-        else:
-            await channel.send('I am already in a voice channel.')
+            cur.execute(f"select count(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
+            row = cur.fetchone()
+            temp = row[0]
+            if temp > 0:
+                await play_queue(voice_client, channel, ctx)
+        # else:
+        #     await channel.send('Added to queue: ' + subject)
+
+        await update_queue_message(channel,ctx)  # Update the queue display
     else:
         await channel.send("You need to be in a voice channel to use this command.")
     await ctx.message.delete()
@@ -540,6 +566,8 @@ async def playlist(ctx):
 
     print(rows)
 
+    playlist = []
+
     for song in rows:
         playlist.append([song[0],song[1]])
     print(playlist)
@@ -553,6 +581,14 @@ async def playlist(ctx):
 
 @bot.command()
 async def removefromplaylist(ctx, instance_id):
+
+    cur.execute(f"select song_name from global_playlist where instance_id = ?",(instance_id,))
+    song_name = (cur.fetchone())[0]
+    cur.execute(f"select count(song_name) from global_playlist where song_name = ?",(song_name,))
+    count = (cur.fetchone())[0]
+
+    if count == 1:
+        os.remove(song_name.replace("webm", "flac"))
     try:
         cur.execute(f"delete from global_playlist where server_name = ? and instance_id = ?",(ctx.guild.name,instance_id))
         conn.commit()
@@ -575,10 +611,20 @@ async def removefromplaylist(ctx, instance_id):
 
 @bot.command()
 async def flushplaylist(ctx):
-    try:
-        cur.execute(f"delete from global_playlist where server_name = ?",(ctx.guild.name,))
-    except:
-        await ctx.send("Playlist for this server does not exist")
+    cur.execute(f"select song_name from global_playlist where server_name = ?",(ctx.guild.name,))
+    rows = cur.fetchall()
+
+    for song in rows:
+        cur.execute(f"select count(song_name) from global_playlist where song_name = ?",(song[0],))
+        count = (cur.fetchone())[0]
+
+        if count == 1:
+            os.remove(song[0].replace("webm", "flac"))
+        try:
+            cur.execute(f"delete from global_playlist where server_name = ? and song_name = ?",(ctx.guild.name,song[0]))
+            conn.commit()
+        except:
+            await ctx.send("No such song exists in the playlist")
     await ctx.send("Playlist flushed.")
 
 @bot.command()
