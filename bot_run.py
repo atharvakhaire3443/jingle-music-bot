@@ -89,6 +89,17 @@ async def on_ready():
     guild_data = cur.fetchall()
     print(guild_data)
     print(bot.guilds)
+
+    server_names = [guild.name for guild in bot.guilds] 
+
+    for server in server_names:
+        flag = False
+        for data in guild_data:
+            if server == data[0]:
+                flag = True
+        if flag == False:
+            cur.execute(f"insert into servers(name,channel_id) values(?,?)",(server,1))
+            conn.commit()
     
     for data in guild_data:
         guild_name = data[0]
@@ -96,9 +107,8 @@ async def on_ready():
         print(guild_name)
         
         guild = discord.utils.get(bot.guilds, name=guild_name)
-        channel = bot.get_channel(channel_id)
         
-        if guild and channel:
+        if guild:
             existing_channel_names = {c.name for c in guild.text_channels}
             print(existing_channel_names)
             
@@ -115,11 +125,11 @@ async def on_ready():
                 print(new_channel)
                 print(f'Created a new text channel in {guild.name}')
                 await new_channel.send("Welcome to Jingle-Space! Feel free to play some tunes here.")
-                cur.execute(f"update servers set channel_id = {new_channel.id} where name = '{guild_name}'")
+                cur.execute(f"update servers set channel_id = ? where name = ?",(new_channel.id,guild_name))
                 conn.commit()
         
         else:
-            print('Guild or channel not found')
+            print('Guild not found')
         play_lock_df.loc[len(play_lock_df)] = [guild_name,asyncio.Lock(),False,False]
     print(play_lock_df)
 
@@ -252,23 +262,24 @@ async def play(ctx):
         deets = downloadAudio(subject + '+official+audio')
         filename = deets[0]
         duration = deets[1]
-        print(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0])
-        async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
+        print(ctx.guild.name)
+        lock = list(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'])[0]
+        async with lock:
             try:
-                cur.execute(f"select min(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+                cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
                 row = cur.fetchone()
                 next_queue_position = int(row[0]) + 1
-                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{filename}','{ctx.guild.name}',{next_queue_position})")
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),filename,ctx.guild.name,next_queue_position))
                 conn.commit()
             except:
-                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{filename}','{ctx.guild.name}',1)")
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),filename,ctx.guild.name,1))
                 conn.commit()
 
         if voice_state is None:
             voice_client = await voice_channel.connect()
 
             # Start playing the queue if it was empty
-            cur.execute(f"select count(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+            cur.execute(f"select count(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
             row = cur.fetchone()
             temp = row[0]
             if temp > 0:
@@ -285,7 +296,7 @@ async def play(ctx):
 async def play_queue(voice_client, channel, ctx):
 
     # Check if the queue is empty
-    cur.execute(f"select count(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+    cur.execute(f"select count(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
     row = cur.fetchone()
     temp = row[0]
     if temp == 0:
@@ -297,8 +308,9 @@ async def play_queue(voice_client, channel, ctx):
     await update_queue_message(channel,ctx)
 
    # Get the first song from the queue
-    async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
-        cur.execute(f"select song_name from global_queue where server_name = '{ctx.guild.name}' and queue_position = (select min(queue_position) from global_queue where server_name = '{ctx.guild.name}')")
+    lock = list(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'])[0]
+    async with lock:
+        cur.execute(f"select song_name from global_queue where server_name = ? and queue_position = (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
         row = cur.fetchone()
         filename = row[0]
 
@@ -309,8 +321,20 @@ async def play_queue(voice_client, channel, ctx):
     play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_playing'] = True
 
     # Wait for the song to finish playing or being paused
-    while voice_client.is_playing() or play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'][0]:
+    is_paused = list(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'])[0]
+    while voice_client.is_playing() or is_paused:
         await asyncio.sleep(1)
+
+    cur.execute(f"select song_name, instance_id from global_queue where server_name = ? and queue_position = (select min(queue_position) from global_queue where server_name = ?",(ctx.guild.name,ctx.guild.name))
+    row = cur.fetchone()
+    current_song = row[0]
+    instance_id = row[1]
+    # Remove the song from the queue if it's the currently playing song
+    lock = list(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'])[0]
+    async with lock:
+        if current_song == filename:
+            cur.execute(f"delete from global_queue where server_name = ? and instance_id = ?",(ctx.guild.name,instance_id))
+            conn.commit()
 
     cur.execute(f"select song_name from global_playlist")
     song_data = cur.fetchall()
@@ -323,16 +347,6 @@ async def play_queue(voice_client, channel, ctx):
     
     if not flag:
         os.remove(filename.replace("webm", "flac"))
-    
-    cur.execute(f"select song_name, instance_id from global_queue where server_name = '{ctx.guild.name}' and queue_position = (select min(queue_position) from global_queue where server_name = '{ctx.guild.name}')")
-    row = cur.fetchone()
-    current_song = row[0]
-    instance_id = row[1]
-    # Remove the song from the queue if it's the currently playing song
-    async with play_lock_df[play_lock_df['guild'] == ctx.guild.name]['lock'][0]:
-        if current_song == filename:
-            cur.execute(f"delete from global_queue where server_name = '{ctx.guild.name}' and instance_id = '{instance_id}'")
-            conn.commit()
 
     # Play the next song in the queue
     await play_queue(voice_client, channel, ctx)
@@ -363,14 +377,18 @@ async def update_queue_message(channel,ctx):
         except discord.NotFound:
             pass
 
-    cur.execute(f"select song_name from global_queue where server_name = '{ctx.guild.name}'")
+    cur.execute(f"select song_name,queue_position from global_queue where server_name = ?",(ctx.guild.name,))
     rows = cur.fetchall()
     queue = []
 
     print(rows)
 
     for song in rows:
-        queue.append(song[0])
+        queue.append([song[0],song[1]])
+    print(queue)
+
+    queue = sorted(queue, key=lambda x: x[1])
+
     print(queue)
 
     if queue:
@@ -405,7 +423,7 @@ async def addtoplaylist(ctx):
         filename = deets[0]
         duration = deets[1]
 
-        cur.execute(f"select song_name from global_playlist where server_name = '{ctx.guild.name}'")
+        cur.execute(f"select song_name from global_playlist where server_name = ?",(ctx.guild.name,))
         rows = cur.fetchall()
 
         flag = False
@@ -413,7 +431,7 @@ async def addtoplaylist(ctx):
             if song[0] == filename:
                 flag = True
         if not flag:
-            cur.execute(f"insert into global_playlist(instance_id,song_name,server_name) values('{str(uuid.uuid4())}','{filename}','{ctx.guild.name}')")
+            cur.execute(f"insert into global_playlist(instance_id,song_name,server_name) values(?,?,?)",(str(uuid.uuid4()),filename,ctx.guild.name))
             conn.commit()
 
         await channel.send('Added to playlist: ' + subject)
@@ -445,7 +463,7 @@ async def playplaylist(ctx):
 
             # Read the songs from the playlist file
 
-            cur.execute(f"select song_name from global_playlist where server_name = '{ctx.guild.name}'")
+            cur.execute(f"select song_name from global_playlist where server_name = ?",(ctx.guild.name,))
             rows = cur.fetchall()
 
             # Shuffle the playlist if randomize is True
@@ -454,13 +472,13 @@ async def playplaylist(ctx):
 
             for song in rows:
                 try:
-                    cur.execute(f"select min(queue_position) from global_queue where server_name = '{ctx.guild.name}'")
+                    cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
                     row = cur.fetchone()
                     next_queue_position = int(row[0]) + 1
-                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{song[0]}','{ctx.guild.name}',{next_queue_position})")
+                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),filename,ctx.guild.name,next_queue_position))
                     conn.commit()
                 except:
-                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values('{str(uuid.uuid4())}','{song[0]}','{ctx.guild.name}',1)")
+                    cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),filename,ctx.guild.name,1))
                     conn.commit()
 
             # Start playing the queue if it was empty
@@ -476,22 +494,23 @@ async def playplaylist(ctx):
 async def randomize(ctx):
     global queue
 
-    if len(queue) <= 1:
+    cur.execute(f"select song_name from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global queue where server_name = ?",(ctx.guild.name,ctx.guild.name))
+    rows = cur.fetchall()
+    if len(rows) <= 2:
         await ctx.send("Queue does not have enough songs to be randomized.")
         return
 
-    # Get the currently playing song
-    currently_playing = queue[0]
-
     # Shuffle the queue starting from the second song
-    shuffled_queue = queue[1:]
-    random.shuffle(shuffled_queue)
+    random.shuffle(rows)
 
-    # Construct the new queue with the currently playing song at the first position
-    new_queue = [currently_playing] + shuffled_queue
-
-    # Replace the queue with the new randomized queue
-    queue = new_queue
+    cur.execute(f"delete from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global_queue where server_name = ?",(ctx.guild.name,ctx.guild.name))
+    conn.commit()
+    for song in rows:
+            cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
+            row = cur.fetchone()
+            next_queue_position = int(row[0]) + 1
+            cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),song[0],ctx.guild.name,next_queue_position))
+            conn.commit()
 
     cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
     row = cur.fetchone()
@@ -508,17 +527,23 @@ async def randomize(ctx):
 
 @bot.command()
 async def playlist(ctx):
-    with open(playlist_file, 'r') as f:
-        lines = f.readlines()
+    cur.execute(f"select song_name,instance_id from global_playlist where server_name = ?",(ctx.guild.name,))
+    rows = cur.fetchall()
 
-    if not lines:
-        await ctx.send("The playlist is empty.")
+    if not rows:
+        await ctx.send("No songs are currently on your playlist!")
         return
 
-    playlist_message = "Playlist:\n"
-    for i, line in enumerate(lines, start=1):
-        playlist_message += f"{i}. {line.strip()}\n"
+    print(rows)
 
+    for song in rows:
+        playlist.append([song[0],song[1]])
+    print(playlist)
+
+    if playlist:
+        playlist_message = "---------------------------------------------\nPlaylist:\n"
+        for i, filename in enumerate(playlist, start=1):
+            playlist_message += f"{i}. {filename}\n"
     await ctx.send(playlist_message)
     await ctx.message.delete()
 
