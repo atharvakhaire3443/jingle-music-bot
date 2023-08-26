@@ -254,9 +254,9 @@ async def remove(ctx, index: int):
 @bot.command()
 async def shift(ctx, original_index: int, final_index: int):
 
-    cur.execute(f"select count(*) from global_queue where server_name = ?",(ctx.guild.name,))
+    cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
     count = (cur.fetchone())[0]
-    if original_index < 2 or original_index > len(count) or final_index < 2 or final_index > len(count):
+    if original_index < 2 or original_index > count or final_index < 2 or final_index > count:
         await ctx.send("Invalid song index.")
     else:
         cur.execute(f"select song_name from global_queue where server_name = ? and queue_position = ?",(ctx.guild.name,original_index))
@@ -291,7 +291,7 @@ async def shift(ctx, original_index: int, final_index: int):
 
         channel_id = row[0]
         channel = bot.get_channel(channel_id)
-        await update_queue_message(channel)
+        await update_queue_message(channel,ctx)
     await ctx.message.delete()
 
 @bot.command()
