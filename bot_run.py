@@ -101,6 +101,9 @@ async def on_ready():
             cur.execute(f"insert into servers(name,channel_id) values(?,?)",(server,1))
             conn.commit()
     
+    cur.execute('select * from servers')
+    guild_data = cur.fetchall()
+    
     for data in guild_data:
         guild_name = data[0]
         channel_id = data[1]
@@ -524,7 +527,7 @@ async def playplaylist(ctx):
 async def randomize(ctx):
     global queue
 
-    cur.execute(f"select song_name from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
+    cur.execute(f"select song_name from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
     rows = cur.fetchall()
     if len(rows) <= 2:
         await ctx.send("Queue does not have enough songs to be randomized.")
