@@ -529,7 +529,7 @@ async def randomize(ctx):
 
     cur.execute(f"select song_name from global_queue where server_name = ? and queue_position not in (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
     rows = cur.fetchall()
-    if len(rows) <= 2:
+    if len(rows) <= 1:
         await ctx.send("Queue does not have enough songs to be randomized.")
         return
 
