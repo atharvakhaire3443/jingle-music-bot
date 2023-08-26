@@ -149,7 +149,7 @@ async def pause(ctx):
     voice_state = ctx.message.guild.voice_client
     if voice_state and voice_state.is_playing():
         voice_state.pause()
-        is_paused = True
+        play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'] = True
         await ctx.send("Playback paused.")
     else:
         await ctx.send("No audio is currently playing.")
@@ -163,7 +163,7 @@ async def resume(ctx):
     voice_state = ctx.message.guild.voice_client
     if voice_state and voice_state.is_paused():
         voice_state.resume()
-        is_paused = False
+        play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'] = False
         await ctx.send("Playback resumed.")
     else:
         await ctx.send("Playback is not paused.")
@@ -255,12 +255,32 @@ async def remove(ctx, index: int):
 async def shift(ctx, original_index: int, final_index: int):
 
     cur.execute(f"select count(*) from global_queue where server_name = ?",(ctx.guild.name,))
-    rows = cur.fetchall()
-    if original_index < 2 or original_index > len(rows) or final_index < 2 or final_index > len(rows):
+    count = (cur.fetchone())[0]
+    if original_index < 2 or original_index > len(count) or final_index < 2 or final_index > len(count):
         await ctx.send("Invalid song index.")
     else:
-        filename = queue.pop(original_index - 1)
-        queue.insert(final_index-1,filename)
+        cur.execute(f"select song_name from global_queue where server_name = ? and queue_position = ?",(ctx.guild.name,original_index))
+        song = cur.fetchone()
+        cur.execute(f"select song_name from global_queue where server_name = ?",(ctx.guild.name,))
+        rows = cur.fetchall()
+
+        rows.remove(song)
+        rows.insert(final_index - 1,song)
+
+        cur.execute(f"delete from global_queue where server_name = ?",(ctx.guild.name,))
+        conn.commit()
+
+        for song in rows:
+            try:
+                cur.execute(f"select max(queue_position) from global_queue where server_name = ?",(ctx.guild.name,))
+                row = cur.fetchone()
+                next_queue_position = int(row[0]) + 1
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),song[0],ctx.guild.name,next_queue_position))
+                conn.commit()
+            except:
+                cur.execute(f"insert into global_queue(instance_id,song_name,server_name,queue_position) values(?,?,?,?)",(str(uuid.uuid4()),song[0],ctx.guild.name,1))
+                conn.commit()
+
         await ctx.send(f"Shifted song at index {original_index} to index {final_index}.")
         cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
         row = cur.fetchone()
