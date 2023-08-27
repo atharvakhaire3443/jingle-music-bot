@@ -242,9 +242,6 @@ requests-file
 rope
 rsa
 Rtree
-ruamel-yaml-conda
-ruamel.yaml
-ruamel.yaml.clib
 s3transfer
 scikit-image
 scikit-learn
@@ -296,7 +293,6 @@ traitlets
 Twisted
 typed-ast
 typing_extensions
-uamqp==1.6.4
 ujson
 Unidecode
 uritemplate==4.1.1
