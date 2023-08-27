@@ -287,8 +287,6 @@ tornado
 tqdm
 traitlets
 Twisted
-typed-ast
-typing_extensions
 ujson
 Unidecode
 uritemplate==4.1.1
