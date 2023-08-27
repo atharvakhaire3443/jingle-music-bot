@@ -239,6 +239,18 @@ async def remove(ctx, index: int):
                 conn.commit()
 
         await ctx.send(f"Removed song at index {index} from the queue.")
+
+        cur.execute(f"select song_name from global_playlist")
+        song_data = cur.fetchall()
+
+        flag = False
+        for data in song_data:
+            song_name = data[0]
+            if song_name == song[0]:
+                flag = True
+    
+        if not flag:
+            os.remove(song[0].replace("webm", "flac"))
         cur.execute('SELECT channel_id FROM servers WHERE name = ?', (ctx.guild.name,))
         row = cur.fetchone()
 
