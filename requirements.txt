@@ -135,7 +135,6 @@ kiwisolver
 kneed==0.8.1
 lazy-object-proxy
 libarchive-c
-llvmlite==0.38.0
 locket
 lxml
 Markdown
@@ -166,7 +165,6 @@ numexpr
 numpy
 numpydoc
 olefile
-openai==0.27.8
 openpyxl
 opuslib==3.0.1
 packaging
@@ -202,7 +200,6 @@ pyasn1-modules==0.2.8
 pycodestyle
 pycosat==0.6.3
 pycparser
-pycryptodomex==3.18.0
 pyct
 pydocstyle
 pyerfa
@@ -296,7 +293,6 @@ toolz
 tornado
 tqdm
 traitlets
-turtle==0.0.1
 Twisted
 typed-ast
 typing_extensions
@@ -322,7 +318,6 @@ xlwings==0.24.9
 yapf
 yarl
 yfinance==0.1.74
-youtube-dl==2021.12.17
 yt-dlp
 zict==2.0.0
 zipp
