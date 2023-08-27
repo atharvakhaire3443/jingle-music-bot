@@ -289,8 +289,6 @@ traitlets
 Twisted
 ujson
 Unidecode
-uritemplate==4.1.1
-urllib3
 w3lib
 watchdog
 wcwidth
