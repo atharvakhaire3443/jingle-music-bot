@@ -271,7 +271,6 @@ stack-data
 statsmodels
 sympy
 tables
-tabulate==0.8.9
 TBB==0.2
 tblib
 tenacity
@@ -310,10 +309,8 @@ wurlitzer
 xarray
 xlrd
 XlsxWriter
-xlwings==0.24.9
 yapf
 yarl
-yfinance==0.1.74
 yt-dlp
 zict==2.0.0
 zipp
