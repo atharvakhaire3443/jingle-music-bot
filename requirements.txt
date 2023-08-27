@@ -3,6 +3,5 @@ discord
 discord-ext-bot
 yt_dlp
 google-api-python-client
-sqlite3
 pandas
 uuid
