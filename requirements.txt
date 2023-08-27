@@ -1,7 +1,5 @@
 aiosignal
 alabaster
-anaconda-client
-anaconda-project
 anyio
 appdirs==1.4.4
 applaunchservices
