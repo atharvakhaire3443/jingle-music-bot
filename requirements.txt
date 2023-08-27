@@ -54,7 +54,6 @@ Cython
 cytoolz==0.11.0
 dask
 datashader
-datashape==0.5.4
 debugpy
 decorator
 defusedxml
