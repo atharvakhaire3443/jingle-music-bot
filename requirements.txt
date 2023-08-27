@@ -52,7 +52,6 @@ cssselect==1.1.0
 cycler
 Cython
 cytoolz==0.11.0
-daal4py==2021.5.0
 dask
 datashader
 datashape==0.5.4
@@ -74,7 +73,6 @@ ffprobe==0.5
 filelock
 flake8
 Flask
-fonttools==4.25.0
 frozenlist
 fsspec
 future
@@ -104,7 +102,6 @@ imageio
 imagesize
 importlib-metadata
 incremental
-inflection==0.5.1
 iniconfig
 intake
 intervaltree
@@ -148,10 +145,6 @@ matplotlib
 matplotlib-inline
 mccabe==0.6.1
 mistune
-mkl-fft==1.3.1
-mkl-random
-mkl-service==2.4.0
-mlxtend==0.21.0
 mock
 mpmath==1.2.1
 msgpack
@@ -160,7 +153,6 @@ multipledispatch
 multitasking==0.0.11
 munkres==1.1.4
 mutagen==1.46.0
-mypy-extensions==0.4.3
 nbclassic
 nbclient
 nbconvert
@@ -200,7 +192,6 @@ poyo
 prometheus-client
 prompt-toolkit
 Protego
-protobuf==4.23.4
 psutil
 psycopg2-binary==2.9.5
 ptyprocess
