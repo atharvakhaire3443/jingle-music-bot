@@ -1,7 +1,6 @@
 asyncio
 discord
 discord-ext-bot
-dotenv
 yt_dlp
 google-api-python-client
 sqlite3
