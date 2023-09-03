@@ -148,8 +148,8 @@ async def pause(ctx):
 
     voice_state = ctx.message.guild.voice_client
     if voice_state and voice_state.is_playing():
-        voice_state.pause()
         play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'] = True
+        voice_state.pause()
         await ctx.send("Playback paused.")
     else:
         await ctx.send("No audio is currently playing.")
@@ -388,8 +388,7 @@ async def play_queue(voice_client, channel, ctx):
     play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_playing'] = True
 
     # Wait for the song to finish playing or being paused
-    is_paused = list(play_lock_df[play_lock_df['guild'] == ctx.guild.name]['is_paused'])[0]
-    while voice_client.is_playing() or is_paused:
+    while voice_client.is_playing() or voice_client.is_paused():
         await asyncio.sleep(1)
 
     cur.execute(f"select song_name, instance_id from global_queue where server_name = ? and queue_position = (select min(queue_position) from global_queue where server_name = ?)",(ctx.guild.name,ctx.guild.name))
