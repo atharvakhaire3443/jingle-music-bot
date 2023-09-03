@@ -122,6 +122,9 @@ async def on_ready():
             
             if 'jingle-space' in existing_channel_names:
                 print(f'Text channel already exists in {guild.name}')
+                channel = discord.utils.get(guild.channels,name = 'jingle-space')
+                cur.execute(f"update servers set channel_id = ? where name = ?",(channel.id,guild.name))
+                conn.commit()
             else:
                 # Create a new text channel
                 new_channel = await guild.create_text_channel('jingle-space')
