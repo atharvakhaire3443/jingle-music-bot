@@ -93,6 +93,14 @@ async def on_guild_join(guild):
     print(play_lock_df)
 
 @bot.event
+async def on_guild_remove(guild):
+    cur.execute(f"delete from server where name = ?",(guild.name,))
+    cur.execute(f"delete from global_queue where server_name = ?",(guild.name,))
+    cur.execute(f"delete from global_playlist where server_name = ?",(guild.name,))
+    conn.commit()
+    print(f'Removed {guild.name}')
+
+@bot.event
 async def on_ready():
     cur.execute('select * from servers')
     guild_data = cur.fetchall()
