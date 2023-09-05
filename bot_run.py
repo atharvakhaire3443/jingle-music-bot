@@ -94,7 +94,7 @@ async def on_guild_join(guild):
 
 @bot.event
 async def on_guild_remove(guild):
-    cur.execute(f"delete from server where name = ?",(guild.name,))
+    cur.execute(f"delete from servers where name = ?",(guild.name,))
     cur.execute(f"delete from global_queue where server_name = ?",(guild.name,))
     cur.execute(f"delete from global_playlist where server_name = ?",(guild.name,))
     conn.commit()
