@@ -82,6 +82,15 @@ def downloadAudio(subject):
 
     return [filename, content[1]]
 
+@bot.event
+async def on_guild_join(guild):
+    new_channel = await guild.create_text_channel('jingle-space')
+    print(f'Created a new text channel in {guild.name}')
+    await new_channel.send("Welcome to Jingle-Space! Feel free to play some tunes here.")
+    cur.execute(f"insert into servers(name,channel_id) values(?,?)",(guild.name,new_channel.id))
+    conn.commit()
+    play_lock_df.loc[len(play_lock_df)] = [guild.name,asyncio.Lock(),False,False]
+    print(play_lock_df)
 
 @bot.event
 async def on_ready():
