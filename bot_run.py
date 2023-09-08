@@ -63,7 +63,7 @@ def getVideoLink(query):
         return None
 
 
-def downloadAudio(subject):
+async def downloadAudio(subject):
     content = getVideoLink(subject)
     options = {
         'format': 'bestaudio/best',
@@ -346,7 +346,7 @@ async def play(ctx):
 
         # Add the song to the queue
         subject = ctx.message.content[6:].strip().replace(' ', '+')
-        deets = downloadAudio(subject + '+official+audio')
+        deets = await downloadAudio(subject + '+official+audio')
         filename = deets[0]
         duration = deets[1]
         print(ctx.guild.name)
@@ -505,7 +505,7 @@ async def addtoplaylist(ctx):
 
         # Add the song to the playlist file
         subject = ctx.message.content[15:].strip().replace(' ', '+')
-        deets = downloadAudio(subject + '+official+audio')
+        deets = await downloadAudio(subject + '+official+audio')
         filename = deets[0]
         duration = deets[1]
 
