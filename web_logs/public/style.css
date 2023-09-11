@@ -1,0 +1,40 @@
+.center-content{
+    text-align: center;
+}
+img {
+    display: inline-block;
+    vertical-align: middle;
+    width: 60px;
+    border-radius: 50%;
+}
+h1 {
+    text-align: center;
+    display: inline-block;
+    vertical-align: middle;
+}
+body{
+    font-family: 'Jost';
+    background-color: #333;
+    color: #fff;
+}
+ul{
+    list-style-type: none;
+    padding: 0;
+}
+li{
+    display: inline-block;
+    margin: 5px;
+}
+button {
+    background-color: #7289DA; /* Discord blue color */
+    color: #fff;
+    border: none;
+    padding: 10px 20px; /* Adjust padding for button size */
+    font-size: 16px; /* Adjust font size */
+    cursor: pointer;
+    border-radius: 25px;
+}
+
+button:hover {
+    background-color: #5f6f8c; /* Darker shade on hover */
+}

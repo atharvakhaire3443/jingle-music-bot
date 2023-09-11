@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href = "/public/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Jost&display=swap" rel="stylesheet">
+    <title> Jingle Logs </title> 
+</head>
+<body>
+    <div class = "center-content">
+        <img src = "/public/IMG-20220219-WA0004.jpg" alt = "Jingle Bot Image">
+        <h1> Jingle Logs </h1>
+        <h2> Servers </h2>
+        <ul>
+            <% 
+            servers.forEach(server => { %>
+                <li>
+                    <button onclick = 'redirectToServer("<%= server.name %>")'>
+                        <%= server.name %>
+                    </button>
+                </li>
+            <% }); %>
+        </ul>
+        <script>
+            function redirectToServer(serverName) {
+                window.location.href = '/server/' + encodeURIComponent(serverName);
+            }
+        </script>
+    </div>
+</body>
+</html>
