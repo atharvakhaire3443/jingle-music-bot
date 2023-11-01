@@ -18,8 +18,6 @@ conn = sqlite3.connect('jingle.db')
 
 cur = conn.cursor()
 
-playlist_file = 'playlist.txt'
-
 play_lock_df = pd.DataFrame(columns=['guild','lock','is_playing','is_paused'])
 
 opus_encoder = discord.opus.Encoder()
